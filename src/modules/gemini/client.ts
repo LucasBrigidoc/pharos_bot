@@ -7,7 +7,7 @@ const genAI = new GoogleGenerativeAI(key);
 
 export function getGeminiModel(systemInstruction: string) {
   return genAI.getGenerativeModel({
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.0-flash',
     systemInstruction,
   });
 }
