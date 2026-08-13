@@ -70,6 +70,16 @@ async function extractText(ctx: Context): Promise<string | null> {
   return null;
 }
 
+// ─── Parse da resposta "Projeto - Nome - Data" ───────────────────────────────
+
+function parseMeetingInfo(text: string): { projeto: string; assunto: string; data: string } {
+  const parts = text.split(/\s*[-–]\s*/);
+  const projeto = (parts[0] ?? '').trim();
+  const assunto = (parts[1] ?? '').trim();
+  const data    = (parts[2] ?? '').trim();
+  return { projeto, assunto, data };
+}
+
 // ─── Handler de mensagens enquanto flow = 'ata' ──────────────────────────────
 
 export async function handleAtaMessage(ctx: Context, session: Record<string, unknown>) {
@@ -85,11 +95,29 @@ export async function handleAtaMessage(ctx: Context, session: Record<string, unk
       return;
     }
 
-    await setSession(chatId, { ...session, step: 'waiting_modalidade', transcricao: text });
+    await setSession(chatId, { ...session, step: 'waiting_meeting_info', transcricao: text });
+    await ctx.reply(
+      '📁 Qual o projeto, nome e data da reunião?\n\n' +
+      'Responda no formato: *Projeto - Nome da Reunião - Data*\n\n' +
+      '_Exemplo: Truckão - Alinhamento Interno - 28/07/2026_',
+      { parse_mode: 'Markdown' },
+    );
+    return;
+  }
+
+  if (step === 'waiting_meeting_info') {
+    const msg = ctx.message;
+    const rawText = msg && 'text' in msg ? msg.text?.trim() : '';
+    if (!rawText || rawText.startsWith('/')) return;
+
+    const { projeto, assunto, data } = parseMeetingInfo(rawText);
+
+    await setSession(chatId, { ...session, step: 'waiting_modalidade', projeto, assunto, data });
     await ctx.reply(
       'Qual foi a modalidade da reunião?',
       { reply_markup: { inline_keyboard: [MODALIDADE_OPTS] } },
     );
+    return;
   }
 }
 
@@ -126,31 +154,38 @@ export function registerAtaActions(bot: Telegraf) {
 
     const transcricao = session.transcricao as string;
     const modalidade  = session.modalidade  as string;
+    const projeto     = (session.projeto as string | undefined) ?? '';
+    const assunto     = (session.assunto as string | undefined) ?? '';
+    const data        = (session.data    as string | undefined) ?? '';
 
     await clearSession(chatId);
 
     const processingMsg = await ctx.reply('⏳ Analisando transcrição com IA...\n\nIsso pode levar até 1 minuto para transcrições longas.');
 
     try {
-      // Chama o Gemini
-      const userMsg = buildAtaUserMessage({ modalidade, detalhe, transcricao });
+      const userMsg = buildAtaUserMessage({ modalidade, detalhe, transcricao, projeto, assunto, data });
       const raw = await callGemini(ATA_SYSTEM, userMsg);
       const ata: AtaJSON = JSON.parse(extractJSON(raw));
 
-      // Gera o .docx
-      const docBuffer = await generateAtaDocx(ata);
-      const fileName  = buildAtaFileName(ata.projeto, ata.data, ata.assunto);
+      // Usar os campos fornecidos pelo usuário se a IA não preencheu
+      if (!ata.projeto && projeto) ata.projeto = projeto;
+      if (!ata.assunto && assunto) ata.assunto = assunto;
+      if (!ata.data    && data)    ata.data    = data;
 
-      // Deleta a mensagem "processando..."
+      const docBuffer = await generateAtaDocx(ata);
+      const fileName  = buildAtaFileName(
+        projeto || ata.projeto,
+        data    || ata.data,
+        assunto || ata.assunto,
+      );
+
       await ctx.telegram.deleteMessage(chatId, processingMsg.message_id).catch(() => undefined);
 
-      // Envia o arquivo
       await ctx.replyWithDocument(
         { source: docBuffer, filename: fileName },
         { caption: `✅ *Ata gerada!*\n📁 ${fileName}`, parse_mode: 'Markdown' },
       );
 
-      // Envia os pontos a confirmar separado (se houver)
       if (ata.pontos_a_confirmar.length > 0) {
         const lista = ata.pontos_a_confirmar.map((p, i) => `${i + 1}. ${p}`).join('\n');
         await ctx.reply(

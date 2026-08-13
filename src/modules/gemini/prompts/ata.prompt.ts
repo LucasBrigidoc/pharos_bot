@@ -79,8 +79,15 @@ export function buildAtaUserMessage(params: {
   modalidade: string;
   detalhe: string;
   transcricao: string;
+  projeto?: string;
+  assunto?: string;
+  data?: string;
 }): string {
-  return `Projeto/Cliente: extrair da transcrição
+  const projetoLine  = params.projeto ? `Projeto/Cliente: ${params.projeto}` : 'Projeto/Cliente: extrair da transcrição';
+  const assuntoLine  = params.assunto ? `Assunto/Nome da Reunião: ${params.assunto}` : '';
+  const dataLine     = params.data    ? `Data: ${params.data}` : '';
+  const extras = [assuntoLine, dataLine].filter(Boolean).join('\n');
+  return `${projetoLine}${extras ? '\n' + extras : ''}
 Modalidade e local: ${params.modalidade}
 Nível de detalhe: ${params.detalhe}
 Transcrição (pode conter mais de uma reunião/entrevista):

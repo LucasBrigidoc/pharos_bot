@@ -32,6 +32,10 @@ const C = {
 };
 const F = { title: 'Playfair Display', body: 'Helvetica Now' };
 
+// Bordas invisíveis reutilizáveis
+const noBorder = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' };
+const noBorders = { top: noBorder, bottom: noBorder, left: noBorder, right: noBorder, insideHorizontal: noBorder, insideVertical: noBorder };
+
 // ─── Schema ─────────────────────────────────────────────────────────────────
 
 export interface AtaJSON {
@@ -52,9 +56,15 @@ export interface AtaJSON {
 
 function sectionTitle(text: string): Paragraph {
   return new Paragraph({
-    spacing: { before: 320, after: 80 },
-    border: { bottom: { color: C.gold, style: BorderStyle.SINGLE, size: 12, space: 4 } },
-    children: [new TextRun({ text: text.toUpperCase(), font: F.title, color: C.medGreen, bold: true, size: 26 })],
+    spacing: { before: 400, after: 120 },
+    border: { bottom: { color: C.gold, style: BorderStyle.SINGLE, size: 12, space: 6 } },
+    children: [new TextRun({
+      text: text.toUpperCase(),
+      font: F.title,
+      color: C.medGreen,
+      bold: true,
+      size: 28,
+    })],
   });
 }
 
@@ -62,18 +72,62 @@ function bodyParagraphs(corpo: string): Paragraph[] {
   return corpo.split('\n').map(l => l.trim()).filter(Boolean).map(line => {
     const isSubtitle = /^\d+\.\d+/.test(line);
     return new Paragraph({
-      spacing: { before: isSubtitle ? 160 : 80, after: 60 },
-      children: [new TextRun({ text: line, font: F.body, size: 22, color: isSubtitle ? C.gold : C.body, italics: isSubtitle })],
+      spacing: { before: isSubtitle ? 200 : 100, after: 80 },
+      indent: { left: 0 },
+      children: [new TextRun({
+        text: line,
+        font: F.body,
+        size: 24,
+        color: isSubtitle ? C.gold : C.body,
+        italics: isSubtitle,
+        bold: isSubtitle,
+      })],
     });
   });
 }
 
 function infoRow(label: string, value: string): TableRow {
-  const cell = (text: string, bold = false) => new TableCell({
-    borders: { top: { style: BorderStyle.NONE, size: 0 }, bottom: { style: BorderStyle.NONE, size: 0 }, left: { style: BorderStyle.NONE, size: 0 }, right: { style: BorderStyle.NONE, size: 0 } },
-    children: [new Paragraph({ children: [new TextRun({ text, font: F.body, size: 22, bold, color: bold ? C.medGreen : C.body })] })],
+  return new TableRow({
+    children: [
+      new TableCell({
+        width: { size: 32, type: WidthType.PERCENTAGE },
+        borders: noBorders,
+        margins: { top: 60, bottom: 60, left: 0, right: 200 },
+        children: [new Paragraph({
+          children: [new TextRun({ text: label, font: F.body, size: 24, bold: true, color: C.medGreen })],
+        })],
+      }),
+      new TableCell({
+        width: { size: 68, type: WidthType.PERCENTAGE },
+        borders: noBorders,
+        margins: { top: 60, bottom: 60, left: 0, right: 0 },
+        children: [new Paragraph({
+          children: [new TextRun({ text: value, font: F.body, size: 24, color: C.body })],
+        })],
+      }),
+    ],
   });
-  return new TableRow({ children: [cell(label, true), cell(value)] });
+}
+
+function headerCell(text: string): TableCell {
+  return new TableCell({
+    shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen },
+    margins: { top: 120, bottom: 120, left: 160, right: 160 },
+    children: [new Paragraph({
+      children: [new TextRun({ text, font: F.body, color: C.white, bold: true, size: 22 })],
+    })],
+  });
+}
+
+function dataCell(text: string, rowIndex: number, color = C.body, bold = false): TableCell {
+  const fill = rowIndex % 2 === 0 ? C.white : C.offWhite;
+  return new TableCell({
+    shading: { fill, type: ShadingType.SOLID, color: fill },
+    margins: { top: 120, bottom: 120, left: 160, right: 160 },
+    children: [new Paragraph({
+      children: [new TextRun({ text, font: F.body, size: 22, color, bold })],
+    })],
+  });
 }
 
 // ─── Header com papel timbrado ───────────────────────────────────────────────
@@ -83,13 +137,12 @@ function buildHeader(): Header {
   if (!fs.existsSync(bgPath)) {
     return new Header({ children: [new Paragraph({ children: [] })] });
   }
-  const bgData = fs.readFileSync(bgPath);
   return new Header({
     children: [
       new Paragraph({
         children: [
           new ImageRun({
-            data: bgData,
+            data: fs.readFileSync(bgPath),
             transformation: { width: 794, height: 1123 },
             floating: {
               horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
@@ -111,57 +164,81 @@ function buildHeader(): Header {
 export async function generateAtaDocx(ata: AtaJSON): Promise<Buffer> {
   const children: (Paragraph | Table)[] = [];
 
-  // — Título
+  // — Espaço superior para não sobrepor o timbrado
+  children.push(new Paragraph({ spacing: { before: 0, after: 480 }, children: [] }));
+
+  // — Título principal
   children.push(
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: 80 },
-      children: [new TextRun({ text: 'ATA DE REUNIÃO', font: F.title, color: C.darkGreen, bold: true, size: 40 })],
+      spacing: { before: 0, after: 100 },
+      children: [new TextRun({ text: 'ATA DE REUNIÃO', font: F.title, color: C.darkGreen, bold: true, size: 44 })],
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { before: 0, after: 320 },
-      border: { bottom: { color: C.gold, style: BorderStyle.SINGLE, size: 18, space: 4 } },
-      children: [new TextRun({ text: ata.assunto, font: F.title, color: C.medGreen, italics: true, size: 26 })],
+      spacing: { before: 0, after: 400 },
+      border: { bottom: { color: C.gold, style: BorderStyle.SINGLE, size: 18, space: 6 } },
+      children: [new TextRun({ text: ata.assunto, font: F.title, color: C.medGreen, italics: true, size: 28 })],
     }),
   );
 
-  // — Informações
-  children.push(new Table({
-    width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [
-      infoRow('Projeto / Cliente:', ata.projeto),
-      infoRow('Data:', ata.data),
-      infoRow('Duração:', ata.duracao),
-      infoRow('Modalidade:', ata.modalidade),
-    ],
-  }));
+  // — Bloco de informações
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      borders: noBorders,
+      rows: [
+        infoRow('Projeto / Cliente:', ata.projeto),
+        infoRow('Data:', ata.data),
+        infoRow('Duração:', ata.duracao),
+        infoRow('Modalidade:', ata.modalidade),
+      ],
+    }),
+    new Paragraph({ spacing: { before: 0, after: 200 }, children: [] }),
+  );
 
   // — Participantes
   children.push(sectionTitle('Participantes'));
-  const presHeader = new TableRow({
-    tableHeader: true,
-    children: ['Nome', 'Empresa', 'Papel'].map(h => new TableCell({
-      shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen },
-      children: [new Paragraph({ children: [new TextRun({ text: h, font: F.body, color: C.white, bold: true, size: 20 })] })],
-    })),
-  });
-  const presRows = ata.presentes.map((p, i) => new TableRow({
-    children: [p.nome, p.empresa, p.papel].map(v => new TableCell({
-      shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite },
-      children: [new Paragraph({ children: [new TextRun({ text: v, font: F.body, size: 20, color: C.body })] })],
-    })),
-  }));
-  children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [presHeader, ...presRows] }));
+  children.push(
+    new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          tableHeader: true,
+          children: [
+            { text: 'Nome',    width: 40 },
+            { text: 'Empresa', width: 35 },
+            { text: 'Papel',   width: 25 },
+          ].map(h => {
+            const cell = headerCell(h.text);
+            (cell as any).options = { ...((cell as any).options ?? {}), width: { size: h.width, type: WidthType.PERCENTAGE } };
+            return new TableCell({
+              width: { size: h.width, type: WidthType.PERCENTAGE },
+              shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen },
+              margins: { top: 120, bottom: 120, left: 160, right: 160 },
+              children: [new Paragraph({ children: [new TextRun({ text: h.text, font: F.body, color: C.white, bold: true, size: 22 })] })],
+            });
+          }),
+        }),
+        ...ata.presentes.map((p, i) => new TableRow({
+          children: [
+            new TableCell({ width: { size: 40, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: p.nome,    font: F.body, size: 22, color: C.body })] })] }),
+            new TableCell({ width: { size: 35, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: p.empresa, font: F.body, size: 22, color: C.body })] })] }),
+            new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: p.papel,   font: F.body, size: 22, color: C.body })] })] }),
+          ],
+        })),
+      ],
+    }),
+  );
 
   if (ata.observacao_participantes) {
     children.push(new Paragraph({
-      spacing: { before: 80 },
-      children: [new TextRun({ text: `Obs.: ${ata.observacao_participantes}`, font: F.body, size: 20, italics: true, color: C.body })],
+      spacing: { before: 100, after: 0 },
+      children: [new TextRun({ text: `Obs.: ${ata.observacao_participantes}`, font: F.body, size: 22, italics: true, color: C.body })],
     }));
   }
 
-  // — Seções de conteúdo (exclui "decisões/alinhamentos" — vai formatada separado)
+  // — Seções de conteúdo
   const secoes = ata.secoes.filter(s =>
     !s.titulo.toLowerCase().includes('decis') && !s.titulo.toLowerCase().includes('alinhamento'),
   );
@@ -175,9 +252,10 @@ export async function generateAtaDocx(ata: AtaJSON): Promise<Buffer> {
     children.push(sectionTitle('Decisões e Alinhamentos'));
     ata.decisoes_alinhamentos.forEach(d => {
       children.push(new Paragraph({
-        spacing: { before: 80, after: 40 },
+        spacing: { before: 100, after: 60 },
         bullet: { level: 0 },
-        children: [new TextRun({ text: d, font: F.body, size: 22, color: C.body })],
+        indent: { left: 360 },
+        children: [new TextRun({ text: d, font: F.body, size: 24, color: C.body })],
       }));
     });
   }
@@ -185,26 +263,30 @@ export async function generateAtaDocx(ata: AtaJSON): Promise<Buffer> {
   // — Encaminhamentos
   if (ata.encaminhamentos.length > 0) {
     children.push(sectionTitle('Encaminhamentos'));
-    const encHeader = new TableRow({
-      tableHeader: true,
-      children: ['#', 'Encaminhamento', 'Responsável', 'Situação'].map(h => new TableCell({
-        shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen },
-        children: [new Paragraph({ children: [new TextRun({ text: h, font: F.body, color: C.white, bold: true, size: 20 })] })],
-      })),
-    });
-    const encRows = ata.encaminhamentos.map((e, i) => new TableRow({
-      children: [
-        new TableCell({
-          shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite },
-          children: [new Paragraph({ children: [new TextRun({ text: String(e.numero), font: F.body, bold: true, color: C.gold, size: 20 })] })],
-        }),
-        ...[e.encaminhamento, e.responsavel, e.situacao].map(v => new TableCell({
-          shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite },
-          children: [new Paragraph({ children: [new TextRun({ text: v, font: F.body, size: 20, color: C.body })] })],
-        })),
-      ],
-    }));
-    children.push(new Table({ width: { size: 100, type: WidthType.PERCENTAGE }, rows: [encHeader, ...encRows] }));
+    children.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: [
+          new TableRow({
+            tableHeader: true,
+            children: [
+              new TableCell({ width: { size: 8,  type: WidthType.PERCENTAGE }, shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: '#',            font: F.body, color: C.white, bold: true, size: 22 })] })] }),
+              new TableCell({ width: { size: 47, type: WidthType.PERCENTAGE }, shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'Encaminhamento', font: F.body, color: C.white, bold: true, size: 22 })] })] }),
+              new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'Responsável',   font: F.body, color: C.white, bold: true, size: 22 })] })] }),
+              new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, shading: { fill: C.darkGreen, type: ShadingType.SOLID, color: C.darkGreen }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: 'Situação',      font: F.body, color: C.white, bold: true, size: 22 })] })] }),
+            ],
+          }),
+          ...ata.encaminhamentos.map((e, i) => new TableRow({
+            children: [
+              new TableCell({ width: { size: 8,  type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: String(e.numero), font: F.body, bold: true, color: C.gold, size: 22 })] })] }),
+              new TableCell({ width: { size: 47, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: e.encaminhamento, font: F.body, size: 22, color: C.body })] })] }),
+              new TableCell({ width: { size: 25, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: e.responsavel,    font: F.body, size: 22, color: C.body })] })] }),
+              new TableCell({ width: { size: 20, type: WidthType.PERCENTAGE }, shading: { fill: i % 2 === 0 ? C.white : C.offWhite, type: ShadingType.SOLID, color: i % 2 === 0 ? C.white : C.offWhite }, margins: { top: 120, bottom: 120, left: 160, right: 160 }, children: [new Paragraph({ children: [new TextRun({ text: e.situacao,       font: F.body, size: 22, color: C.body })] })] }),
+            ],
+          })),
+        ],
+      }),
+    );
   }
 
   // — Pontos a confirmar
@@ -212,14 +294,15 @@ export async function generateAtaDocx(ata: AtaJSON): Promise<Buffer> {
     children.push(sectionTitle('Pontos a Confirmar'));
     ata.pontos_a_confirmar.forEach(p => {
       children.push(new Paragraph({
-        spacing: { before: 80, after: 40 },
+        spacing: { before: 100, after: 60 },
         bullet: { level: 0 },
-        children: [new TextRun({ text: p, font: F.body, size: 22, color: C.gold, italics: true })],
+        indent: { left: 360 },
+        children: [new TextRun({ text: p, font: F.body, size: 24, color: C.gold, italics: true })],
       }));
     });
   }
 
-  // ─── Documento ──────────────────────────────────────────────────────────
+  // ─── Documento ───────────────────────────────────────────────────────────
 
   const doc = new Document({
     sections: [{
@@ -235,11 +318,11 @@ export async function generateAtaDocx(ata: AtaJSON): Promise<Buffer> {
           children: [
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'Ata elaborada por Pharos Consultoria.', font: F.body, size: 16, color: C.darkGreen, italics: true })],
+              children: [new TextRun({ text: 'Ata elaborada por Pharos Consultoria.', font: F.body, size: 18, color: C.darkGreen, italics: true })],
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: 'Você define o destino, nós mostramos o caminho.', font: F.title, size: 16, color: C.gold, italics: true })],
+              children: [new TextRun({ text: 'Você define o destino, nós mostramos o caminho.', font: F.title, size: 18, color: C.gold, italics: true })],
             }),
           ],
         }),
