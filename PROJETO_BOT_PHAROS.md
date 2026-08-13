@@ -4,14 +4,51 @@
 
 ---
 
+## Status atual (atualizado em 13/08/2026)
+
+### ✅ Implementado
+
+**Infra**
+- Bot Telegraf — webhook em produção (Render) / polling em desenvolvimento.
+- Cadastro por senha (`/start`) com dados salvos no Postgres; whitelist efetiva é "usuário cadastrado e ativo" (o middleware `whitelist.ts` por `ALLOWED_CHAT_ID` existe no código mas não está mais em uso — foi substituído pelo fluxo de cadastro).
+- Sessões de conversa persistidas em banco (`sessions`), healthcheck em `/health`.
+- `/perfil` — visualizar e editar nome, e-mail e login/senha do banco de horas (senha criptografada com AES-256-GCM).
+
+**`/ata`** — transcrição de reunião (texto, `.docx` ou `.txt`) → pergunta projeto/assunto/data, modalidade e nível de detalhe → Gemini estrutura em JSON (prompt seção 4.3) → gera `.docx` no papel timbrado real da Pharos (margens, cores, fontes da marca) → entrega o arquivo + lista de pontos a confirmar.
+
+**`/opr`** — relatório semanal completo:
+1. Texto livre → Gemini extrai atividades realizadas / próximas / reuniões (prompt seção 7.3).
+2. Pergunta cliente e período da semana, se a IA não identificar no texto.
+3. Confirma o dia da semana de cada reunião — calculado deterministicamente a partir da data numérica (nunca confia no "dia" que a IA supôs).
+4. Preview com botões Confirmar/Corrigir antes de gerar.
+5. Entrega mensagem de follow-up (saudação calculada por horário, `America/Fortaleza`) + `.pptx` — logo real da Pharos (farol dourado, extraído do material da marca), fontes Playfair Display/Helvetica Now, cards com altura/espaçamento dinâmicos (nunca estouram o slide, mesmo com várias reuniões na semana).
+6. **Sem PDF** — foi removido; hoje o `/opr` entrega só `.pptx` (ver "Pendente" abaixo).
+
+**`/followup`** — mesmo fluxo de extração e confirmação de dias do `/opr`, mas sem perguntar cliente/semana e sem gerar PPT: entrega só a mensagem de follow-up semanal, pronta pra copiar.
+
+**`/turno`** — pergunta cliente + data do turno → relato livre do que foi feito/está pendente/vai fazer → Gemini estrutura em três parágrafos seguindo o guia oficial de follow-up de turno da Pharos ("O que foi feito no turno" / "O que ficou pendente" / "O que farei no próximo turno"), preservando números e nomes citados, sem inventar conteúdo.
+
+Todos os fluxos de IA (ata, opr, followup, turno) seguem o mesmo princípio: a IA nunca completa informação que não foi dita, marca "(a confirmar)" quando há ambiguidade, e o usuário sempre revisa antes do resultado final ser entregue.
+
+### ⏳ Pendente
+
+- **Fase 2 — Outlook (Microsoft Graph)**: nada implementado. Sem OAuth2/MSAL, sem comando `/evento` (criar/editar/listar). A tabela `oauth_tokens` já existe no schema (seção 3), esperando por isso.
+- **Fase 4 — Banco de horas (RPA)**: nada implementado. Sem Playwright, sem comando `/banco_horas`. O cadastro já coleta e criptografa login/senha do sistema de banco de horas, esperando por isso.
+- **PDF do relatório semanal**: removido a pedido do usuário. Para reativar no futuro, precisa de LibreOffice (`soffice --headless`) no ambiente de deploy — o Render nativo (`runtime: node`) não tem isso disponível; exigiria migrar pra `runtime: docker` com um Dockerfile próprio, ou usar um serviço externo de conversão.
+- **Decisões em aberto da seção 10**: revisar antes de avançar a Fase 2 (fonte das reuniões do relatório semanal — só texto livre ou puxar do Outlook como complemento).
+
+---
+
 ## 1. Visão geral
 
-Bot pessoal no Telegram (uso exclusivo, whitelist de 1 `chat_id`) que automatiza 4 fluxos de trabalho na Pharos Consultoria:
+Bot pessoal no Telegram (uso exclusivo, acesso por cadastro com senha) que automatiza fluxos de trabalho na Pharos Consultoria:
 
-1. **Atas de reunião** — transcrição (texto ou `.docx`) → `.docx` formatado no papel timbrado Pharos.
-2. **Outlook** — criar/editar/listar eventos via Microsoft Graph.
-3. **Banco de horas** — lançamento automatizado no site interno da empresa (sem API — via automação de navegador).
-4. **Relatório semanal (OPR)** — texto livre → PPT de uma página + PDF + mensagem de follow-up.
+1. **Atas de reunião** ✅ — transcrição (texto ou `.docx`) → `.docx` formatado no papel timbrado Pharos. (`/ata`)
+2. **Relatório semanal (OPR)** ✅ — texto livre → PPT de uma página + mensagem de follow-up. (`/opr`)
+3. **Follow-up semanal avulso** ✅ — mesmo fluxo do OPR, só a mensagem, sem PPT. (`/followup`, não estava no plano original)
+4. **Follow-up de turno** ✅ — relato livre → mensagem em 3 seções (feito/pendente/próximo). (`/turno`, não estava no plano original)
+5. **Outlook** ⏳ — criar/editar/listar eventos via Microsoft Graph. Não iniciado.
+6. **Banco de horas** ⏳ — lançamento automatizado no site interno da empresa (sem API — via automação de navegador). Não iniciado.
 
 Rodando 24h num VPS (Render), IA de backend: **Gemini API**.
 
@@ -23,8 +60,8 @@ Motivo: o gerador de PPT (`pptxgenjs`) e o parser de Excel (`xlsx`/SheetJS) já 
 
 | Módulo | Biblioteca |
 |---|---|
-| Bot / Telegram | `telegraf` (webhook, não polling) |
-| IA | `@google/generative-ai` (Gemini) |
+| Bot / Telegram | `telegraf` (webhook em produção, polling em dev) |
+| IA | `@google/genai` (Gemini — migrado do `@google/generative-ai` original) |
 | Geração de Word (ata) | `docx` (npm) |
 | Leitura de `.docx` enviado | `mammoth` (extrai texto preservando estrutura) |
 | Geração de PPT (OPR) | `pptxgenjs` — **reaproveitar script existente quase 1:1** |
@@ -38,6 +75,8 @@ Motivo: o gerador de PPT (`pptxgenjs`) e o parser de Excel (`xlsx`/SheetJS) já 
 ---
 
 ## 3. Estrutura de pastas sugerida
+
+> Esta é a estrutura planejada originalmente. A árvore real do repositório evoluiu de forma um pouco diferente (ex.: `commands/relatorio_semanal.ts` cobre `/opr` e `/followup`; `commands/turno.ts` e `prompts/turno.prompt.ts` foram adicionados; `modules/pdf/` foi criado e depois removido junto com o PDF do OPR; `evento.ts`, `banco_horas.ts`, `outlook/` e `banco-horas/` ainda não existem, por serem Fases 2 e 4). Consulte a árvore atual do repositório para a estrutura exata.
 
 ```
 pharos-bot/
@@ -214,6 +253,8 @@ Transcrição (pode conter mais de uma reunião/entrevista):
 
 ## 7. Módulo 4 — Relatório semanal (OPR) + follow-up
 
+> **Status**: implementado como `/opr` (não `/relatorio_semanal`, nome original). Ver "Status atual" no topo do documento para o que mudou de escopo (PDF removido, logo real + fontes da marca no PPT, comandos extras `/followup` e `/turno`).
+
 ### 7.1 Especificação visual do PPT (extraída de `opr_pharos_gera_ppt_local.html`)
 
 Layout `LAYOUT_16x9` (10" × 5.625"). Paleta:
@@ -232,6 +273,12 @@ const C = {
 ```
 
 Estrutura: barra superior com logo "PHAROS" + pill "OPR – One Page Report" + "CONFIDENCIAL", 3 colunas (Atividades Realizadas / Próximas Entregas / Reuniões Agendadas) com cards por item, rodapé com cliente/semana. **O script completo já existe e deve ser portado quase 1:1** — está em `opr_pharos_gera_ppt_local.html`, função `gerarPPT()`. No backend, a única mudança é trocar `pres.writeFile({fileName})` (que baixa no navegador) por salvar em disco/buffer para anexar no Telegram.
+
+**Ajustes feitos em relação ao script original** (`src/modules/pptx/opr-generator.ts`):
+- Logo "PHAROS" trocado por imagem real do farol dourado da marca (`assets/pharos-logo.png`), com o texto "PHAROS" ao lado.
+- Fontes trocadas de Georgia/Trebuchet MS para **Playfair Display** (títulos) e **Helvetica Now** (corpo) — mesma dupla usada no template de ata.
+- Layout dos cards (atividades e reuniões) ficou responsivo: altura e espaçamento se ajustam dinamicamente para nunca ultrapassar o limite do slide, mesmo com várias reuniões na mesma semana.
+- Nome do arquivo segue a convenção `OPR_{cliente com "_" no lugar de espaço}_{semana com "-" no lugar de "/" e espaços}.pptx`.
 
 ### 7.2 Fluxo de entrada — texto livre (decisão final, substituiu Excel e formato rígido)
 
@@ -256,10 +303,12 @@ Pode mandar sua mensagem 👇
 
 2. Usuário manda texto livre.
 3. Gemini extrai estrutura (prompt 7.3).
-4. Bot mostra **preview formatado** (não o JSON cru) + botões `✅ Confirmar` / `✏️ Corrigir`.
-5. Se `Corrigir`: usuário digita a correção em texto livre; bot reenvia JSON atual + correção ao Gemini, pedindo só o JSON atualizado.
-6. Confirmado → gera follow-up (template determinístico, sem IA) + PPT (`pptxgenjs`) + PDF (LibreOffice).
-7. Entrega: mensagem de follow-up (texto, pronta pra copiar) + `.pptx` + `.pdf`.
+4. **[implementado, não estava no plano original]** Bot pergunta o cliente e o período da semana, se a IA não identificou no texto (o período vira o nome do arquivo).
+5. **[implementado, não estava no plano original]** Bot mostra os dias da semana de cada reunião, **calculados deterministicamente a partir da data numérica** (nunca a partir do que a IA "achou" que era o dia) — usuário confirma ou corrige antes de seguir.
+6. Bot mostra **preview formatado** (não o JSON cru) + botões `✅ Confirmar` / `✏️ Corrigir`.
+7. Se `Corrigir`: usuário digita a correção em texto livre; bot reenvia JSON atual + correção ao Gemini, pedindo só o JSON atualizado.
+8. Confirmado → gera follow-up (template determinístico, sem IA) + PPT (`pptxgenjs`).
+9. Entrega: mensagem de follow-up (texto, pronta pra copiar) + `.pptx`. **Sem PDF** — foi removido do escopo (ver "Status atual").
 
 ### 7.3 Prompt de extração (relatório semanal)
 
@@ -326,7 +375,7 @@ Reuniões Agendadas:
 {para cada item de "meet"}: - {dia} ({data}) às {horario} - {obj} - {local}
 ```
 
-- Saudação: decidir se é fixa ("Bom dia, amigos! Todos bem?") ou calculada por horário — **pendente de decisão do usuário**.
+- Saudação: **decidido — calculada por horário** (Bom dia / Boa tarde / Boa noite, `America/Fortaleza`), seguida de "amigos! Todos bem?".
 - Bloco "Próximas" não leva parênteses de objetivo (assimetria intencional, conforme exemplo original do usuário).
 - Bloco "Realizadas" leva `obj` já vindo enxuto do próprio prompt de extração (7.3) — não precisa de segunda chamada de IA.
 
@@ -347,6 +396,40 @@ Entendi assim 👇
 [✅ Confirmar]   [✏️ Corrigir]
 ```
 
+### 7.6 `/followup` — só a mensagem semanal, sem PPT [não estava no plano original]
+
+Pedido do usuário depois do `/opr` estar pronto: em alguns casos só a mensagem de follow-up é necessária, sem gerar o PPT.
+
+Reaproveita **exatamente** o mesmo fluxo do `/opr` (extração, confirmação de dias das reuniões, preview, correção) — a única diferença é que **não pergunta cliente nem semana** (campos que não aparecem na mensagem de follow-up) e o passo final só envia a mensagem de texto, sem chamar `generateOprPptx`.
+
+Implementação: `src/bot/commands/relatorio_semanal.ts` compartilha todo o código entre `/opr` e `/followup` através de um parâmetro `mode: 'opr' | 'followup'` guardado na sessão, que controla se as perguntas de cliente/semana aparecem e se o PPT é gerado no final.
+
+### 7.7 `/turno` — follow-up de turno [não estava no plano original]
+
+Pedido do usuário: mensagem curta de passagem de turno, formato diferente do relatório semanal — baseado no guia oficial "Follow-up de turno" da Pharos.
+
+**Fluxo:**
+1. Bot pergunta cliente e data do turno (formato `Cliente - Data`, ex.: `Auto Center - 31/07`).
+2. Usuário manda relato livre do que fez, o que ficou pendente e o que pretende fazer no próximo turno.
+3. Gemini estrutura em três parágrafos objetivos, em primeira pessoa (prompt em `src/modules/gemini/prompts/turno.prompt.ts`), preservando números e nomes citados — nunca inventa pendência ou atividade não mencionada.
+4. Preview com `✅ Está bom` / `✏️ Corrigir` antes de finalizar.
+
+**Formato final (template determinístico, montado pelo bot):**
+```
+Follow-up de turno — {Cliente} ({Data})
+
+O que foi feito no turno
+{parágrafo gerado pela IA — pretérito perfeito, resultados concretos, menciona quem participou}
+
+O que ficou pendente
+{parágrafo gerado pela IA — específico, com responsável quando citado; nunca genérico tipo "falta terminar"}
+
+O que farei no próximo turno
+{parágrafo gerado pela IA — futuro/presente, o que foi combinado com cliente/gestor quando citado}
+```
+
+Schema JSON do Gemini: `{ "feito": string, "pendente": string, "proximo": string }`.
+
 ---
 
 ## 8. Segurança e infraestrutura
@@ -361,33 +444,35 @@ Entendi assim 👇
 
 ## 9. Roadmap de implementação (ordem definida)
 
-**Fase 0 — Infra**
-Bot básico (`/start`, `/ping`) no webhook do Render, whitelist, Postgres conectado.
-Critério de pronto: bot responde depois de 24h sem intervenção.
+**Fase 0 — Infra** ✅ concluída
+Bot no webhook do Render, cadastro por senha (substituiu a whitelist estática original), Postgres conectado.
+Critério de pronto: bot responde depois de 24h sem intervenção. ✅
 
-**Fase 1 — Ata**
+**Fase 1 — Ata** ✅ concluída
 Placeholders do template `.docx` + prompt da seção 4.3 + preenchimento via `docx` (npm).
-Critério de pronto: manda texto de reunião, recebe `.docx` formatado.
+Critério de pronto: manda texto de reunião, recebe `.docx` formatado. ✅
 
-**Fase 2 — Outlook**
+**Fase 2 — Outlook** ⏳ não iniciada
 OAuth2 do Graph + criar/editar/listar eventos.
 Critério de pronto: cria evento pelo Telegram e aparece no Outlook.
 
-**Fase 3 — Relatório semanal + follow-up**
-Fluxo da seção 7 completo (exemplo → texto livre → extração → preview → confirmação → PPT + PDF + follow-up).
-Critério de pronto: `/relatorio_semanal` entrega os 3 outputs.
+**Fase 3 — Relatório semanal + follow-up** ✅ concluída (com mudanças de escopo)
+Fluxo da seção 7 completo (exemplo → texto livre → extração → confirmação de cliente/semana/dia da semana → preview → confirmação → PPT + follow-up).
+Critério de pronto: `/opr` entrega PPT + follow-up. ✅ (PDF foi removido do escopo, ver "Status atual")
+Além do planejado originalmente, dois comandos extras foram adicionados: `/followup` (só a mensagem semanal, sem PPT) e `/turno` (follow-up de turno em 3 seções, formato próprio — não fazia parte da especificação original).
 
-**Fase 4 — Banco de horas (RPA)**
+**Fase 4 — Banco de horas (RPA)** ⏳ não iniciada
 Playwright headless com tratamento de erro robusto.
 Critério de pronto: `/banco_horas` lança e retorna print de confirmação.
 
 ---
 
-## 10. Decisões em aberto (revisar antes ou durante a Fase 3)
+## 10. Decisões em aberto (revisar antes ou durante a Fase 2)
 
-- [ ] Saudação da mensagem de follow-up: fixa ou variável por horário/humor?
+- [x] Saudação da mensagem de follow-up: **variável por horário** (Bom dia / Boa tarde / Boa noite, calculado em `America/Fortaleza`).
 - [ ] Fonte das reuniões no relatório semanal: só texto livre, ou puxar automaticamente do Outlook (Fase 2) como complemento/checagem?
-- [ ] Nome exato dos placeholders no template `.docx` da ata (a definir durante a Fase 1, com o arquivo real em mãos no Claude Code).
+- [x] Nome exato dos placeholders no template `.docx` da ata: definido em `src/modules/docx/ata-generator.ts`.
+- [ ] PDF do relatório semanal: reativar ou manter só PPT? Se reativar, decidir entre migrar o deploy pra `runtime: docker` (LibreOffice) ou usar um serviço externo de conversão.
 
 ---
 
