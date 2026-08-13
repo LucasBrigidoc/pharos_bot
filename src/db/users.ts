@@ -42,3 +42,15 @@ export async function upsertUser(
     [chatId, nome, email, bancoLogin, encrypt(bancoPwd)]
   );
 }
+
+export async function updateUserField(
+  chatId: number,
+  field: 'nome' | 'email' | 'banco_login' | 'banco_senha_enc',
+  value: string
+): Promise<void> {
+  const encValue = field === 'banco_senha_enc' ? encrypt(value) : value;
+  await pool.query(
+    `UPDATE users SET ${field} = $1 WHERE chat_id = $2`,
+    [encValue, chatId]
+  );
+}
