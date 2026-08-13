@@ -14,8 +14,12 @@ async function main() {
   const app = express();
   app.use(express.json());
 
+  // Mantido sem path no app.use: o token do bot tem ":" (formato id:hash),
+  // e o Express interpreta ":" como início de parâmetro de rota quando o
+  // path é passado pro roteador — isso corrompe o casamento e a rota nunca
+  // bate (404). O telegraf já faz a checagem exata da URL internamente.
   const webhookPath = `/webhook/${BOT_TOKEN}`;
-  app.use(webhookPath, bot.webhookCallback(webhookPath));
+  app.use(bot.webhookCallback(webhookPath));
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, uptime: Math.floor(process.uptime()) });
