@@ -1,0 +1,32 @@
+# render.yaml — deploy automático no Render
+# IMPORTANTE: o web service precisa estar no plano "Starter" (~$7/mês) para não hibernar.
+# O banco de dados free do Render é deletado após 90 dias — considere plano pago na Fase 2.
+
+services:
+  - type: web
+    name: pharos-bot
+    runtime: node
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOT_TOKEN
+        sync: false
+      - key: WEBHOOK_DOMAIN
+        sync: false
+      - key: ALLOWED_CHAT_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pharos-db
+          property: connectionString
+
+databases:
+  - name: pharos-db
+    databaseName: pharos
+    user: pharos
+    plan: free
