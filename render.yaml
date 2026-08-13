@@ -1,6 +1,8 @@
 # render.yaml — deploy automático no Render
 # IMPORTANTE: o web service precisa estar no plano "Starter" (~$7/mês) para não hibernar.
-# O banco de dados free do Render é deletado após 90 dias — considere plano pago na Fase 2.
+# Banco de dados: Supabase (externo) — ver DATABASE_URL abaixo. O Postgres
+# gerenciado do Render ("pharos-db") não é mais usado; pode ser removido
+# manualmente no dashboard do Render quando a migração for confirmada.
 
 services:
   - type: web
@@ -16,17 +18,11 @@ services:
         sync: false
       - key: WEBHOOK_DOMAIN
         sync: false
-      - key: ALLOWED_CHAT_ID
-        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: DATABASE_URL
-        fromDatabase:
-          name: pharos-db
-          property: connectionString
-
-databases:
-  - name: pharos-db
-    databaseName: pharos
-    user: pharos
-    plan: free
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: REGISTRATION_PASSWORD
+        sync: false
