@@ -1,6 +1,6 @@
 import { Context, Telegraf } from 'telegraf';
 import { getSession, setSession, clearSession } from '../../db/sessions';
-import { getGeminiModel, extractJSON } from '../../modules/gemini/client';
+import { callGemini, extractJSON } from '../../modules/gemini/client';
 import { ATA_SYSTEM, buildAtaUserMessage } from '../../modules/gemini/prompts/ata.prompt';
 import { generateAtaDocx, buildAtaFileName, AtaJSON } from '../../modules/docx/ata-generator';
 
@@ -133,10 +133,8 @@ export function registerAtaActions(bot: Telegraf) {
 
     try {
       // Chama o Gemini
-      const model = getGeminiModel(ATA_SYSTEM);
       const userMsg = buildAtaUserMessage({ modalidade, detalhe, transcricao });
-      const result = await model.generateContent(userMsg);
-      const raw = result.response.text();
+      const raw = await callGemini(ATA_SYSTEM, userMsg);
       const ata: AtaJSON = JSON.parse(extractJSON(raw));
 
       // Gera o .docx

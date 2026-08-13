@@ -1,15 +1,17 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 
 const key = process.env.GEMINI_API_KEY;
 if (!key) throw new Error('GEMINI_API_KEY not set');
 
-const genAI = new GoogleGenerativeAI(key);
+const ai = new GoogleGenAI({ apiKey: key });
 
-export function getGeminiModel(systemInstruction: string) {
-  return genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction,
+export async function callGemini(systemInstruction: string, userMessage: string): Promise<string> {
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    config: { systemInstruction },
+    contents: userMessage,
   });
+  return response.text ?? '';
 }
 
 export function extractJSON(raw: string): string {
