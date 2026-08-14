@@ -7,6 +7,7 @@ import {
   buildRelatorioCorrectionMessage,
 } from '../../modules/gemini/prompts/relatorio-semanal.prompt';
 import { generateOprPptx, buildOprFileName, OprData } from '../../modules/pptx/opr-generator';
+import { dataHojeExtenso, capitalize, parseDataBR, weekdayPt } from '../../modules/date/br-date';
 
 // 'opr'      → /opr: gera a mensagem de follow-up + o PPT.
 // 'followup' → /followup: gera só a mensagem de follow-up semanal (sem cliente/semana/PPT).
@@ -50,17 +51,7 @@ export async function followupCommand(ctx: Context) {
   await ctx.reply(EXEMPLO_FOLLOWUP, { parse_mode: 'Markdown' });
 }
 
-// ─── Helpers de data/hora ─────────────────────────────────────────────────
-
-function dataHojeExtenso(): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Fortaleza',
-    weekday: 'long',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(new Date());
-}
+// ─── Helpers locais (saudação, específica deste fluxo) ───────────────────────
 
 function greeting(): string {
   const hour = Number(
@@ -69,35 +60,6 @@ function greeting(): string {
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
-}
-
-function capitalize(s: string): string {
-  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
-}
-
-// Calcula o dia da semana de forma determinística a partir de "DD/MM" ou
-// "DD/MM/AAAA" — nunca confia no "dia" que a IA extraiu, só na data numérica.
-function parseDataBR(dataStr: string, refDate: Date): Date | null {
-  const m = dataStr.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
-  if (!m) return null;
-
-  const day = Number(m[1]);
-  const month = Number(m[2]) - 1;
-  let year = m[3] ? Number(m[3]) : refDate.getFullYear();
-  if (m[3] && m[3].length === 2) year += 2000;
-
-  let d = new Date(Date.UTC(year, month, day, 12));
-  if (!m[3]) {
-    const diffDays = (refDate.getTime() - d.getTime()) / 86_400_000;
-    if (diffDays > 30) d = new Date(Date.UTC(year + 1, month, day, 12));
-  }
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-const WEEKDAYS_PT = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-
-function weekdayPt(date: Date): string {
-  return WEEKDAYS_PT[date.getUTCDay()];
 }
 
 // Recalcula e sobrescreve data.meet[].dia com o dia da semana real (calculado

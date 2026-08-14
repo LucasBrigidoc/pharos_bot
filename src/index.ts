@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { bot } from './bot';
 import { pool } from './db';
+import { handleOutlookCallback } from './modules/outlook/graph-client';
 
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 const BOT_TOKEN = process.env.BOT_TOKEN!;
@@ -23,6 +24,12 @@ async function main() {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, uptime: Math.floor(process.uptime()) });
+  });
+
+  app.get('/auth/outlook/callback', async (req, res) => {
+    const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+    const { status, html } = await handleOutlookCallback({ code, state, error }, bot);
+    res.status(status).send(html);
   });
 
   app.listen(PORT, async () => {

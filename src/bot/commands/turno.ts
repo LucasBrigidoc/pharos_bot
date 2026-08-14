@@ -6,6 +6,7 @@ import {
   buildTurnoUserMessage,
   buildTurnoCorrectionMessage,
 } from '../../modules/gemini/prompts/turno.prompt';
+import { dataHojeCurta } from '../../modules/date/br-date';
 
 interface TurnoJSON {
   feito: string;
@@ -35,14 +36,6 @@ export async function turnoCommand(ctx: Context) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
-function dataHojeCurta(): string {
-  return new Intl.DateTimeFormat('pt-BR', {
-    timeZone: 'America/Fortaleza',
-    day: '2-digit',
-    month: '2-digit',
-  }).format(new Date());
-}
 
 function parseClienteData(text: string): { cliente: string; data: string } {
   const parts = text.split(/\s*[-–]\s*/);

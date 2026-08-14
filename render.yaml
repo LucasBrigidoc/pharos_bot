@@ -26,3 +26,9 @@ services:
         sync: false
       - key: REGISTRATION_PASSWORD
         sync: false
+      - key: AZURE_CLIENT_ID
+        sync: false
+      - key: AZURE_CLIENT_SECRET
+        sync: false
+      - key: AZURE_TENANT_ID
+        sync: false

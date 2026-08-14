@@ -4,6 +4,7 @@ import { ataCommand, handleAtaMessage, registerAtaActions } from './ata';
 import { perfilCommand, handlePerfilMessage, registerPerfilActions } from './perfil';
 import { relatorioCommand, followupCommand, handleRelatorioMessage, registerRelatorioActions } from './relatorio_semanal';
 import { turnoCommand, handleTurnoMessage, registerTurnoActions } from './turno';
+import { eventoCommand, handleEventoMessage, registerEventoActions } from './evento';
 import { getSession, clearSession } from '../../db/sessions';
 
 export function registerCommands(bot: Telegraf) {
@@ -14,6 +15,7 @@ export function registerCommands(bot: Telegraf) {
   bot.command('opr',                relatorioCommand);
   bot.command('followup',           followupCommand);
   bot.command('turno',              turnoCommand);
+  bot.command('evento',             eventoCommand);
 
   bot.command('cancelar', async (ctx: Context) => {
     await clearSession(ctx.from!.id);
@@ -25,6 +27,7 @@ export function registerCommands(bot: Telegraf) {
   registerPerfilActions(bot);
   registerRelatorioActions(bot);
   registerTurnoActions(bot);
+  registerEventoActions(bot);
 
   // ─── Handler de mensagens para fluxos ativos ──────────────────────────────
   bot.on('message', async (ctx: Context) => {
@@ -51,6 +54,11 @@ export function registerCommands(bot: Telegraf) {
 
     if (flow === 'turno') {
       await handleTurnoMessage(ctx, session);
+      return;
+    }
+
+    if (flow === 'evento') {
+      await handleEventoMessage(ctx, session);
       return;
     }
 

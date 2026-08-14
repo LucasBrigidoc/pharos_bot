@@ -28,14 +28,23 @@
 
 **`/turno`** — pergunta cliente + data do turno → relato livre do que foi feito/está pendente/vai fazer → Gemini estrutura em três parágrafos seguindo o guia oficial de follow-up de turno da Pharos ("O que foi feito no turno" / "O que ficou pendente" / "O que farei no próximo turno"), preservando números e nomes citados, sem inventar conteúdo.
 
-Todos os fluxos de IA (ata, opr, followup, turno) seguem o mesmo princípio: a IA nunca completa informação que não foi dita, marca "(a confirmar)" quando há ambiguidade, e o usuário sempre revisa antes do resultado final ser entregue.
+**`/evento`** — integração com Outlook (Microsoft Graph), OAuth2 manual (sem SDK, só `fetch`):
+1. Se não conectado: botão que abre o fluxo de autorização da Microsoft (`state` assinado/criptografado carrega o `chat_id`, sem tabela extra de "state pendente"); ao voltar, o bot manda confirmação no chat.
+2. Conectado: botões **Criar evento** / **Listar eventos**.
+3. Criar: texto livre → Gemini extrai título/data/horário/local/participantes (prompt anti-invenção, mesmo padrão dos outros fluxos) → pergunta individualmente qualquer campo obrigatório que faltar → preview com Confirmar/Corrigir → cria via Graph (`POST /me/events`) → botão com link do evento.
+4. Listar: consulta direta (`GET /me/calendarView`), janela fixa de 7 dias, sem etapa de IA.
+5. Token de acesso renovado automaticamente (`refresh_token`) quando expira; se a conexão for revogada, o bot detecta e oferece reconectar.
+6. **Editar evento não está incluído** — fica para uma próxima iteração (reaproveitaria o mesmo módulo + `PATCH /me/events/{id}`).
+
+Todos os fluxos de IA (ata, opr, followup, turno, evento) seguem o mesmo princípio: a IA nunca completa informação que não foi dita, marca "(a confirmar)" quando há ambiguidade, e o usuário sempre revisa antes do resultado final ser entregue.
 
 ### ⏳ Pendente
 
-- **Fase 2 — Outlook (Microsoft Graph)**: nada implementado. Sem OAuth2/MSAL, sem comando `/evento` (criar/editar/listar). A tabela `oauth_tokens` já existe no schema (seção 3), esperando por isso.
+- **Configuração do Azure AD para o `/evento`**: o código está pronto, mas depende de 3 credenciais (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`) de um app registrado no Azure AD da Pharos — ver seção 5 para o passo a passo. Enquanto não configurado, `/evento` responde com uma mensagem de "módulo não configurado" em vez de quebrar (as credenciais só são checadas quando o comando é usado, não na inicialização do processo).
+- **Editar evento** (`/evento`): próxima iteração do módulo Outlook.
 - **Fase 4 — Banco de horas (RPA)**: nada implementado. Sem Playwright, sem comando `/banco_horas`. O cadastro já coleta e criptografa login/senha do sistema de banco de horas, esperando por isso.
 - **PDF do relatório semanal**: removido a pedido do usuário. Para reativar no futuro, precisa de LibreOffice (`soffice --headless`) no ambiente de deploy — o Render nativo (`runtime: node`) não tem isso disponível; exigiria migrar pra `runtime: docker` com um Dockerfile próprio, ou usar um serviço externo de conversão.
-- **Decisões em aberto da seção 10**: revisar antes de avançar a Fase 2 (fonte das reuniões do relatório semanal — só texto livre ou puxar do Outlook como complemento).
+- **Fonte das reuniões do relatório semanal**: agora que o Outlook está integrado, vale revisitar se o `/opr` deveria puxar as reuniões do calendário em vez de só texto livre (decisão em aberto na seção 10).
 
 ---
 
@@ -47,7 +56,7 @@ Bot pessoal no Telegram (uso exclusivo, acesso por cadastro com senha) que autom
 2. **Relatório semanal (OPR)** ✅ — texto livre → PPT de uma página + mensagem de follow-up. (`/opr`)
 3. **Follow-up semanal avulso** ✅ — mesmo fluxo do OPR, só a mensagem, sem PPT. (`/followup`, não estava no plano original)
 4. **Follow-up de turno** ✅ — relato livre → mensagem em 3 seções (feito/pendente/próximo). (`/turno`, não estava no plano original)
-5. **Outlook** ⏳ — criar/editar/listar eventos via Microsoft Graph. Não iniciado.
+5. **Outlook** ✅ — criar/listar eventos via Microsoft Graph. (`/evento`; editar fica pra próxima iteração; pendente configurar credenciais do Azure AD em produção)
 6. **Banco de horas** ⏳ — lançamento automatizado no site interno da empresa (sem API — via automação de navegador). Não iniciado.
 
 Rodando 24h num VPS (Render), IA de backend: **Gemini API**.
@@ -64,19 +73,18 @@ Motivo: o gerador de PPT (`pptxgenjs`) e o parser de Excel (`xlsx`/SheetJS) já 
 | IA | `@google/genai` (Gemini — migrado do `@google/generative-ai` original) |
 | Geração de Word (ata) | `docx` (npm) |
 | Leitura de `.docx` enviado | `mammoth` (extrai texto preservando estrutura) |
-| Geração de PPT (OPR) | `pptxgenjs` — **reaproveitar script existente quase 1:1** |
-| PPT → PDF | LibreOffice headless (`soffice --headless --convert-to pdf`) |
-| Outlook | `@microsoft/microsoft-graph-client` + `@azure/msal-node` (OAuth2) |
-| Banco de horas (RPA) | `playwright` (Node) |
-| Banco de dados | Postgres (Render) — tokens, estado de conversas, sessões |
-| Scheduler | `node-cron` ou cron job nativo do Render |
-| Deploy | Render Web Service (plano pago — free hiberna e quebra o "24h") |
+| Geração de PPT (OPR) | `pptxgenjs` — **reaproveitar script existente quase 1:1** (sem PDF — removido do escopo) |
+| Outlook | OAuth2 manual + `fetch` puro contra a Microsoft Graph API — sem `@microsoft/microsoft-graph-client` nem `@azure/msal-node` |
+| Banco de horas (RPA) | `playwright` (Node) — ainda não implementado |
+| Banco de dados | Postgres via Supabase (migrado do Postgres gerenciado do Render) — tokens, estado de conversas, sessões |
+| Scheduler | `node-cron` ou cron job nativo do Render — ainda não usado |
+| Deploy | Render Web Service (plano Starter — free hiberna e quebra o "24h") |
 
 ---
 
 ## 3. Estrutura de pastas sugerida
 
-> Esta é a estrutura planejada originalmente. A árvore real do repositório evoluiu de forma um pouco diferente (ex.: `commands/relatorio_semanal.ts` cobre `/opr` e `/followup`; `commands/turno.ts` e `prompts/turno.prompt.ts` foram adicionados; `modules/pdf/` foi criado e depois removido junto com o PDF do OPR; `evento.ts`, `banco_horas.ts`, `outlook/` e `banco-horas/` ainda não existem, por serem Fases 2 e 4). Consulte a árvore atual do repositório para a estrutura exata.
+> Esta é a estrutura planejada originalmente. A árvore real do repositório evoluiu de forma um pouco diferente: `commands/relatorio_semanal.ts` cobre `/opr` e `/followup`; `commands/turno.ts`/`prompts/turno.prompt.ts` e `commands/evento.ts`/`prompts/evento.prompt.ts` foram adicionados; `modules/pdf/` foi criado e depois removido junto com o PDF do OPR; `modules/outlook/graph-client.ts` substitui o `outlook/graph-client.ts` planejado (mesmo lugar, implementação sem SDK); `db/oauth.ts` e `modules/date/br-date.ts` (helpers de data compartilhados) foram adicionados; `banco_horas.ts` e `banco-horas/` ainda não existem, por ser a Fase 4. Consulte a árvore atual do repositório para a estrutura exata.
 
 ```
 pharos-bot/
@@ -236,9 +244,37 @@ Transcrição (pode conter mais de uma reunião/entrevista):
 
 ## 5. Módulo 2 — Outlook (Microsoft Graph)
 
-- Registro de app no Azure AD (gratuito), fluxo OAuth2 uma vez, refresh token salvo no Postgres.
-- Comandos: `/evento criar`, `/evento editar`, `/evento listar`.
-- Usado também como fonte de dados para o relatório semanal (reuniões da semana), se o usuário optar por puxar do calendário em vez de digitar manualmente.
+> **Status**: implementado como `/evento` (criar + listar; editar fica pra próxima iteração — ver "Status atual"). OAuth2 manual com `fetch`, sem `@azure/msal-node` nem `@microsoft/microsoft-graph-client` — nenhuma dependência nova no projeto.
+
+### 5.1 Pré-requisito: registro do app no Azure AD
+
+Feito uma vez, pela conta admin do Microsoft 365 da Pharos, em portal.azure.com:
+
+1. **Azure Active Directory → App registrations → New registration**
+   - Nome: `Pharos Bot - Outlook Integration`.
+   - Supported account types: **"Accounts in this organizational directory only (Single tenant)"** — uso interno exclusivo da Pharos.
+   - Redirect URI (tipo Web): `https://<domínio do bot>/auth/outlook/callback` (mesmo domínio de `WEBHOOK_DOMAIN`).
+2. **Certificates & secrets → New client secret** → copiar o "Value" na hora (só aparece uma vez) → vira `AZURE_CLIENT_SECRET`.
+3. **Overview** → `Application (client) ID` → `AZURE_CLIENT_ID`; `Directory (tenant) ID` → `AZURE_TENANT_ID`.
+4. **API permissions → Add a permission → Microsoft Graph → Delegated**: `Calendars.ReadWrite`, `offline_access`, `User.Read`.
+5. **Grant admin consent for Pharos Consultoria** — evita a tela de aprovação travando o primeiro login de cada usuário.
+
+As 3 credenciais são env vars (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`) checadas **sob demanda** (não na inicialização do processo) — enquanto não configuradas, o resto do bot continua funcionando normalmente e `/evento` responde com uma mensagem de "módulo não configurado" em vez de derrubar o app.
+
+### 5.2 Fluxo OAuth2
+
+- **Autorização**: `buildAuthorizationUrl(chatId)` monta a URL de `/authorize` da Microsoft. O parâmetro `state` é o `{chatId, timestamp}` criptografado com o mesmo módulo AES-256-GCM já usado pra senha do banco de horas (`src/modules/crypto`) — autenticado, então qualquer adulteração é detectada na hora de decriptar. Isso liga o retorno do fluxo ao usuário certo sem precisar de uma tabela de "state pendente".
+- **Callback**: rota `GET /auth/outlook/callback` (em `src/index.ts`, registrada depois do webhook do Telegram) troca o `code` por tokens, salva em `oauth_tokens` (criptografados) e manda uma mensagem de confirmação de volta pro chat do Telegram — já que o navegador que completa o login pode ser um dispositivo diferente.
+- **Refresh automático**: antes de cada chamada à Graph API, `getValidAccessToken` verifica `expires_at` e renova via `refresh_token` se necessário. Se o refresh falhar (token revogado), a linha é apagada e o bot pede reconexão — nunca insiste com um token morto.
+
+### 5.3 Comandos
+
+Um único `/evento` com botões (não sub-comandos de texto):
+- **Criar**: texto livre → Gemini extrai título/data/horário/local/participantes (mesmo padrão anti-invenção dos outros prompts — nunca inventa horário de término se não foi dito) → pergunta os campos obrigatórios que faltarem → preview → cria via `POST /me/events`. Participantes citados entram como texto na descrição do evento, não como convite formal (resolver nome → e-mail corporativo ficou fora do escopo, evitaria invenção de e-mail).
+- **Listar**: `GET /me/calendarView`, janela fixa dos próximos 7 dias, sem etapa de IA (é consulta direta).
+- **Editar**: não implementado ainda — precisaria de um passo de seleção do evento a partir da listagem, mais `PATCH /me/events/{id}`.
+
+Decisão em aberto original (puxar reuniões do relatório semanal a partir do calendário) segue pendente — ver seção 10.
 
 ---
 
@@ -452,9 +488,10 @@ Critério de pronto: bot responde depois de 24h sem intervenção. ✅
 Placeholders do template `.docx` + prompt da seção 4.3 + preenchimento via `docx` (npm).
 Critério de pronto: manda texto de reunião, recebe `.docx` formatado. ✅
 
-**Fase 2 — Outlook** ⏳ não iniciada
-OAuth2 do Graph + criar/editar/listar eventos.
-Critério de pronto: cria evento pelo Telegram e aparece no Outlook.
+**Fase 2 — Outlook** ✅ concluída (criar + listar; editar adiado)
+OAuth2 manual (sem SDK) + `/evento` com criar/listar. Depende de configuração externa (app no Azure AD, seção 5.1) antes de funcionar de ponta a ponta em produção.
+Critério de pronto: cria evento pelo Telegram e aparece no Outlook. ⏳ código pronto, pendente validação em produção após configurar as credenciais do Azure AD (ver "Status atual").
+Editar evento não entrou nesta entrega — próxima iteração do módulo.
 
 **Fase 3 — Relatório semanal + follow-up** ✅ concluída (com mudanças de escopo)
 Fluxo da seção 7 completo (exemplo → texto livre → extração → confirmação de cliente/semana/dia da semana → preview → confirmação → PPT + follow-up).
@@ -467,10 +504,10 @@ Critério de pronto: `/banco_horas` lança e retorna print de confirmação.
 
 ---
 
-## 10. Decisões em aberto (revisar antes ou durante a Fase 2)
+## 10. Decisões em aberto
 
 - [x] Saudação da mensagem de follow-up: **variável por horário** (Bom dia / Boa tarde / Boa noite, calculado em `America/Fortaleza`).
-- [ ] Fonte das reuniões no relatório semanal: só texto livre, ou puxar automaticamente do Outlook (Fase 2) como complemento/checagem?
+- [ ] Fonte das reuniões no relatório semanal: só texto livre, ou puxar automaticamente do Outlook (`/evento` já implementado, Fase 2 concluída) como complemento/checagem?
 - [x] Nome exato dos placeholders no template `.docx` da ata: definido em `src/modules/docx/ata-generator.ts`.
 - [ ] PDF do relatório semanal: reativar ou manter só PPT? Se reativar, decidir entre migrar o deploy pra `runtime: docker` (LibreOffice) ou usar um serviço externo de conversão.
 
